@@ -1,8 +1,14 @@
-import { EtsyApiError } from "../utils/errors.js";
+import { EtsyApiError, EtsyAuthError, describeErrorBody } from "../utils/errors.js";
 
 const BASE_URL = "https://openapi.etsy.com/v3/application";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+/** Repeating these is harmless. POST/PATCH may already have been applied when the reply was lost. */
+const RETRY_SAFE_METHODS = new Set(["GET", "PUT", "DELETE"]);
+
+function notRetried(method: string, path: string, reason: string): string {
+  return `${method} ${path} failed (${reason}). Not retried automatically because Etsy may already have applied it; check before trying again.`;
+}
 
 export { EtsyApiError } from "../utils/errors.js";
 
@@ -54,6 +60,7 @@ export class EtsyClient {
     params?: Record<string, string>,
     isFormData = false
   ): Promise<T> {
+    const retrySafe = RETRY_SAFE_METHODS.has(method);
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -101,7 +108,12 @@ export class EtsyClient {
             continue;
           }
           const errorBody = await response.json().catch(() => null);
-          throw new EtsyApiError(401, errorBody, "Authentication failed after token refresh");
+          const detail = describeErrorBody(errorBody);
+          throw new EtsyApiError(
+            401,
+            errorBody,
+            `Etsy rejected the login even after a token refresh${detail ? ` (${detail})` : ""}. Call the authenticate tool to sign in again.`
+          );
         }
 
         if (response.status === 429) {
@@ -113,14 +125,19 @@ export class EtsyClient {
         }
 
         if (response.status >= 500) {
-          lastError = new EtsyApiError(response.status, await response.json().catch(() => null));
+          const errorBody = await response.json().catch(() => null);
+          if (!retrySafe) {
+            throw new EtsyApiError(response.status, errorBody, notRetried(method, path, `Etsy API error (${response.status})`));
+          }
+          lastError = new EtsyApiError(response.status, errorBody);
           continue;
         }
 
         const errorBody = await response.json().catch(() => null);
         throw new EtsyApiError(response.status, errorBody);
       } catch (err) {
-        if (err instanceof EtsyApiError) throw err;
+        if (err instanceof EtsyApiError || err instanceof EtsyAuthError) throw err;
+        if (!retrySafe) throw new Error(notRetried(method, path, (err as Error).message));
         lastError = err as Error;
         if (attempt === MAX_RETRIES) throw lastError;
       }

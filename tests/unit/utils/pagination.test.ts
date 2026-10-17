@@ -31,6 +31,16 @@ describe("formatPaginatedResponse", () => {
     expect(result).toContain('"has_more": true');
   });
 
+  it("echoes the limit actually applied when the request asked for more than 100", () => {
+    const result = formatPaginatedResponse({ count: 500, results: [{ id: 1 }] }, 150, 0);
+    expect(JSON.parse(result).limit).toBe(100);
+  });
+
+  it("echoes a limit within range unchanged", () => {
+    const result = formatPaginatedResponse({ count: 500, results: [{ id: 1 }] }, 40, 0);
+    expect(JSON.parse(result).limit).toBe(40);
+  });
+
   it("detects when no more pages", () => {
     const result = formatPaginatedResponse(
       { count: 2, results: [{ id: 1 }, { id: 2 }] },

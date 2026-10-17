@@ -1,127 +1,103 @@
-# Etsy MCP Server
+# Etsy MCP Server (Elektron Labs fork)
 
-[![Tests](https://img.shields.io/github/actions/workflow/status/aserper/etsy-mcp/test.yml?style=for-the-badge&label=tests)](https://github.com/aserper/etsy-mcp/actions/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=for-the-badge)](https://nodejs.org/)
-[![Docker](https://img.shields.io/badge/ghcr.io-aserper%2Fetsy--mcp-blue?style=for-the-badge)](https://ghcr.io/aserper/etsy-mcp)
+A hardened, trimmed fork of [aserper/etsy-mcp](https://github.com/aserper/etsy-mcp) by Amit Serper. It lets Claude Code and Claude Desktop run one Etsy shop: orders and shipping, listings and inventory, sales stats, and market research.
 
-![GitHub stars](https://img.shields.io/github/stars/aserper/etsy-mcp?style=social)
-![GitHub forks](https://img.shields.io/github/forks/aserper/etsy-mcp?style=social)
+## What this fork changes
 
-A Model Context Protocol (MCP) server that provides full access to the Etsy Open API v3. Supports both buyer browsing and seller shop management with **37 tools** covering listings, orders, shipping, reviews, inventory, payments, and more.
+- **Login works.** The OAuth callback defaults to `http://localhost:3003/oauth/redirect`, which is what Etsy requires (an exact match with the URL registered on your app). It listens on 127.0.0.1 only.
+- **Least privilege.** Requests `listings_r listings_w shops_r transactions_r transactions_w` instead of all 20 scopes.
+- **No duplicate writes.** POST and PATCH are never retried after a server error or dropped connection.
+- **Clear login errors.** An expired or failed login tells Claude to call `authenticate` instead of failing silently.
+- **Upload guard.** Image and video upload only read image and video files.
+- **Keys outside the project.** Keys load from `~/.etsy-mcp/.env`, next to the tokens. Nothing is printed to stdout.
+- **33 tools for one seller.** Shop-admin tools are gone. `get_unshipped_orders` and `get_sales_summary` are new. `shop_id` defaults to your shop. Every tool is marked read-only or write, so clients can ask before writes.
 
-## Features
+## Tools
 
-- **Full Etsy API v3 coverage** — 37 MCP tools wrapping ~70 API endpoints
-- **OAuth 2.0 + PKCE** — Secure browser-based authentication with automatic token refresh
-- **Both buyer and seller workflows** — Search listings, manage shops, process orders, handle shipping
-- **Rate limiting** — Concurrency-safe 10 req/sec limiter to respect Etsy's limits
-- **Auto-retry** — Exponential backoff on 429/5xx errors, automatic token refresh on 401
-- **TypeScript** — Full type safety with types generated from Etsy's official OpenAPI spec
+| Area | Read | Write |
+|---|---|---|
+| Orders | `get_unshipped_orders`, `get_shop_receipts`, `get_receipt`, `get_shipping_carriers` | `create_shipment`, `update_receipt` |
+| Transactions | `get_transactions_by_shop`, `get_transaction`, `get_transactions_by_receipt` | |
+| Listings | `search_listings`, `get_listing`, `get_listings_by_shop` | `create_draft_listing`, `update_listing` |
+| Inventory | `get_listing_inventory` | `update_listing_inventory` |
+| Images | `get_listing_images` | `upload_listing_image`, `upload_listing_video`, `delete_listing_image` |
+| Shop | `get_me`, `get_shop`, `find_shops`, `get_shop_sections`, `get_shipping_profiles` | |
+| Reviews | `get_reviews_by_listing`, `get_reviews_by_shop` | |
+| Taxonomy | `get_buyer_taxonomy`, `get_taxonomy_properties` | |
+| Money | `get_sales_summary`, `get_payments`, `get_ledger_entries` | |
+| Auth | | `authenticate` (opens a browser and saves the token file locally; changes nothing on Etsy) |
 
-| Category | Tools |
-|----------|-------|
-| **Listings** | `search_listings`, `get_listing`, `create_draft_listing`, `update_listing`, `delete_listing`, `get_listings_by_shop` |
-| **Shop** | `get_shop`, `update_shop`, `find_shops`, `get_shop_sections`, `manage_shop_sections` |
-| **Orders** | `get_shop_receipts`, `get_receipt`, `update_receipt`, `create_shipment` |
-| **Transactions** | `get_transactions_by_shop`, `get_transaction`, `get_transactions_by_receipt` |
-| **Shipping** | `get_shipping_profiles`, `create_shipping_profile`, `update_shipping_profile`, `manage_shipping_destinations`, `get_shipping_carriers` |
-| **Reviews** | `get_reviews_by_listing`, `get_reviews_by_shop` |
-| **Users** | `get_me`, `get_user`, `get_user_addresses` |
-| **Taxonomy** | `get_buyer_taxonomy`, `get_taxonomy_properties` |
-| **Images/Video** | `get_listing_images`, `upload_listing_image`, `upload_listing_video`, `delete_listing_image` |
-| **Inventory** | `get_listing_inventory`, `update_listing_inventory` |
-| **Payments** | `get_payments`, `get_ledger_entries` |
-| **Return Policies** | `get_return_policies`, `manage_return_policy` |
-| **Auth** | `authenticate` |
+## Setup
 
-## Installation
+Requires Node.js 20 or newer.
 
-### From source
+1. Create an app at [etsy.com/developers/your-apps](https://www.etsy.com/developers/your-apps). Set its callback URL to exactly `http://localhost:3003/oauth/redirect`.
+2. Create `~/.etsy-mcp/.env` (on Windows, `C:\Users\<you>\.etsy-mcp\.env`) from `.env.example`. Real environment variables take precedence over the file.
+3. Build: `npm ci && npm run build`
+4. Register the server:
+   - Claude Code: `claude mcp add etsy -s user -- node /absolute/path/to/etsy-mcp/dist/index.js`
+   - Claude Desktop, in `claude_desktop_config.json`:
+     ```json
+     { "mcpServers": { "etsy": { "command": "node", "args": ["/absolute/path/to/etsy-mcp/dist/index.js"] } } }
+     ```
+5. In Claude Code, allow-list the 24 read tools plus `authenticate` so they run without a prompt. Add them by exact name (`mcp__etsy__<tool>`) to `permissions.allow` in `~/.claude/settings.json`, and leave the 8 write tools out so each write asks first:
+   ```json
+   {
+     "permissions": {
+       "allow": [
+         "mcp__etsy__authenticate",
+         "mcp__etsy__find_shops",
+         "mcp__etsy__get_buyer_taxonomy",
+         "mcp__etsy__get_ledger_entries",
+         "mcp__etsy__get_listing",
+         "mcp__etsy__get_listing_images",
+         "mcp__etsy__get_listing_inventory",
+         "mcp__etsy__get_listings_by_shop",
+         "mcp__etsy__get_me",
+         "mcp__etsy__get_payments",
+         "mcp__etsy__get_receipt",
+         "mcp__etsy__get_reviews_by_listing",
+         "mcp__etsy__get_reviews_by_shop",
+         "mcp__etsy__get_sales_summary",
+         "mcp__etsy__get_shipping_carriers",
+         "mcp__etsy__get_shipping_profiles",
+         "mcp__etsy__get_shop",
+         "mcp__etsy__get_shop_receipts",
+         "mcp__etsy__get_shop_sections",
+         "mcp__etsy__get_taxonomy_properties",
+         "mcp__etsy__get_transaction",
+         "mcp__etsy__get_transactions_by_receipt",
+         "mcp__etsy__get_transactions_by_shop",
+         "mcp__etsy__get_unshipped_orders",
+         "mcp__etsy__search_listings"
+       ]
+     }
+   }
+   ```
+   The write tools stay unlisted: `create_draft_listing`, `create_shipment`, `delete_listing_image`, `update_listing`, `update_listing_inventory`, `update_receipt`, `upload_listing_image`, `upload_listing_video`.
+6. Ask Claude to authenticate with Etsy. Your browser opens Etsy's consent page. Tokens are saved to `~/.etsy-mcp/tokens.json` and refreshed automatically. The refresh token lasts 90 days; after that, authenticate again.
 
-```bash
-git clone https://github.com/aserper/etsy-mcp.git
-cd etsy-mcp
-npm install
-npm run build
-```
-
-### Docker
-
-```bash
-docker pull ghcr.io/aserper/etsy-mcp:latest
-```
-
-## Configuration
-
-Register at [Etsy Developers](https://developers.etsy.com/) to get your API credentials.
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ETSY_API_KEY` | Yes | Your Etsy API keystring |
-| `ETSY_SHARED_SECRET` | Yes | Your Etsy shared secret |
-
-Copy `.env.example` to `.env` and fill in your credentials:
-
-```bash
-cp .env.example .env
-```
-
-## Usage
-
-### Claude Desktop Configuration
-
-```json
-{
-  "mcpServers": {
-    "etsy": {
-      "command": "node",
-      "args": ["/path/to/etsy-mcp/dist/index.js"],
-      "env": {
-        "ETSY_API_KEY": "your_keystring",
-        "ETSY_SHARED_SECRET": "your_shared_secret"
-      }
-    }
-  }
-}
-```
-
-### Docker
-
-```bash
-docker run --rm \
-  -e ETSY_API_KEY=your_keystring \
-  -e ETSY_SHARED_SECRET=your_shared_secret \
-  ghcr.io/aserper/etsy-mcp:latest
-```
-
-## Authentication
-
-On first use, call the `authenticate` tool. This opens your browser to Etsy's OAuth consent page using PKCE. After granting access, tokens are stored at `~/.etsy-mcp/tokens.json` (owner-only permissions) and auto-refreshed when they expire.
+To use a different callback port, set `ETSY_REDIRECT_PORT` and register the matching URL on your Etsy app.
 
 ## Development
 
 ```bash
-npm install          # Install dependencies
-npm run build        # Compile TypeScript
-npm test             # Run tests
-npm run dev          # Watch mode
-npm run lint         # Type check
-npm run generate-types  # Regenerate types from Etsy OAS spec
+npm ci               # install dependencies
+npm run build        # compile TypeScript to dist/
+npm test             # unit tests
+npm run lint         # type check
+npm run smoke        # start dist/index.js over stdio and check the tool list
+npm run generate-types  # regenerate types from Etsy's OpenAPI spec
 ```
 
-## API Coverage
+## Limits
 
-This server covers the full Etsy Open API v3 (~70 endpoints). Features not available via the public API (messaging, cart, favorites, checkout) are out of scope.
+Etsy's Open API v3 has no buyer messaging, cart, favorites or checkout endpoints, so this server can't do those things.
 
 ## License
 
-MIT
-
-## Contributing
-
-Contributions welcome! Feel free to open an issue or submit a PR.
+MIT. See [LICENSE](LICENSE). Original project by Amit Serper.
 
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, or associated with Etsy, Inc. It uses Etsy's publicly available Open API v3. Use responsibly and in accordance with [Etsy's API Terms of Use](https://www.etsy.com/legal/api).
+This project is not affiliated with, endorsed by, or associated with Etsy, Inc. It uses Etsy's publicly available Open API v3. Use it responsibly and in line with [Etsy's API Terms of Use](https://www.etsy.com/legal/api).

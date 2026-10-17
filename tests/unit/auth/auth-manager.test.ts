@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthManager } from "../../../src/auth/auth-manager.js";
 import type { TokenStore, StoredTokens } from "../../../src/auth/token-store.js";
 import type { OAuthClient } from "../../../src/auth/oauth.js";
+import { EtsyAuthError, TokenRefreshError } from "../../../src/utils/errors.js";
 
 function createMockTokenStore(): TokenStore {
   let stored: StoredTokens | null = null;
@@ -82,5 +83,58 @@ describe("AuthManager", () => {
     await tokenStore.save(tokens);
     await manager.handleTokenExpired();
     expect(oauthClient.refreshAccessToken).toHaveBeenCalledWith("valid-refresh");
+  });
+
+  it("keeps the login and throws EtsyAuthError when a refresh fails for a network reason", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "r", expires_at: Date.now() - 1000 });
+    (oauthClient.refreshAccessToken as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(manager.getAccessToken()).rejects.toThrow(EtsyAuthError);
+    expect(tokenStore.clear).not.toHaveBeenCalled();
+  });
+
+  it("clears the login and asks to re-authenticate when the refresh token is dead", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "dead", expires_at: Date.now() - 1000 });
+    (oauthClient.refreshAccessToken as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new TokenRefreshError(400, '{"error":"invalid_grant"}')
+    );
+
+    await expect(manager.getAccessToken()).rejects.toThrow("authenticate");
+    expect(tokenStore.clear).toHaveBeenCalled();
+  });
+
+  it("handleTokenExpired without a login tells Claude to authenticate", async () => {
+    await expect(manager.handleTokenExpired()).rejects.toThrow("authenticate");
+  });
+
+  it("authenticate starts a fresh login when the stored one is dead", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "dead", expires_at: Date.now() - 1000 });
+    (oauthClient.refreshAccessToken as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new TokenRefreshError(400, '{"error":"invalid_grant"}')
+    );
+
+    await expect(manager.authenticate()).resolves.toBe("new-token");
+    expect(oauthClient.startLocalAuthFlow).toHaveBeenCalled();
+  });
+
+  it("shares one refresh between parallel callers", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "r1", expires_at: Date.now() - 1000 });
+
+    const both = await Promise.all([manager.getAccessToken(), manager.getAccessToken()]);
+
+    expect(both).toEqual(["refreshed-token", "refreshed-token"]);
+    expect(oauthClient.refreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a newer login saved by someone else when the old refresh token is rejected", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "r1", expires_at: Date.now() - 1000 });
+    (oauthClient.refreshAccessToken as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      // Another process refreshed first and saved a new login.
+      await tokenStore.save({ access_token: "fresh", refresh_token: "r2", expires_at: Date.now() + 3600_000 });
+      throw new TokenRefreshError(400, '{"error":"invalid_grant"}');
+    });
+
+    await expect(manager.getAccessToken()).resolves.toBe("fresh");
+    expect(tokenStore.clear).not.toHaveBeenCalled();
   });
 });

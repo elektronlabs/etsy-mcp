@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EtsyClient, EtsyApiError } from "../../../src/client/etsy-client.js";
+import { EtsyAuthError } from "../../../src/utils/errors.js";
 
 describe("EtsyClient", () => {
   let client: EtsyClient;
@@ -62,6 +63,29 @@ describe("EtsyClient", () => {
     });
 
     await expect(client.get("/listings/999")).rejects.toThrow(EtsyApiError);
+  });
+
+  it("puts Etsy's own error text in the message Claude sees", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: "Invalid listing_id" }),
+    });
+
+    await expect(client.get("/listings/abc")).rejects.toThrow("Invalid listing_id");
+  });
+
+  it("tells Claude to sign in again when a 401 survives the token refresh", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: "invalid_token" }),
+    });
+
+    const failure = client.get("/shops/1/receipts");
+    await expect(failure).rejects.toThrow(EtsyApiError);
+    await expect(failure).rejects.toThrow(/invalid_token/);
+    await expect(failure).rejects.toThrow(/authenticate/);
   });
 
   it("retries on 429 with backoff", async () => {
@@ -149,5 +173,56 @@ describe("EtsyClient", () => {
 
     const result = await client.put("/shops/123", { title: "Updated" });
     expect(result).toEqual({ updated: true });
+  });
+
+  it("does not retry POST after a 5xx", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve({}) })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ created: true }) });
+
+    await expect(client.post("/shops/1/receipts/2/tracking", {})).rejects.toThrow("Not retried automatically");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry PATCH after a network error", async () => {
+    mockFetch
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) });
+
+    await expect(client.patch("/shops/1/listings/2", { title: "x" })).rejects.toThrow("fetch failed");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still retries POST on 429, which Etsy never processed", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 429, headers: new Headers({ "Retry-After": "0" }), json: () => Promise.resolve({}) })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ created: true }) });
+
+    await expect(client.post("/shops/1/listings", {})).resolves.toEqual({ created: true });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries GET after a network error", async () => {
+    mockFetch
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: 1 }) });
+
+    await expect(client.get("/listings/active")).resolves.toEqual({ ok: 1 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes auth errors through instead of retrying them", async () => {
+    client = new EtsyClient({
+      apiKey: "test-key",
+      sharedSecret: "test-secret",
+      getAccessToken: async () => null,
+      onTokenExpired: async () => {
+        throw new EtsyAuthError("This needs your Etsy login. Call the authenticate tool first.");
+      },
+    });
+    mockFetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) });
+
+    await expect(client.get("/shops/1/receipts")).rejects.toThrow(EtsyAuthError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
