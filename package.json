@@ -1,7 +1,7 @@
 {
   "name": "etsy-mcp",
   "version": "1.1.0-elektron",
-  "description": "MCP server providing full access to the Etsy Open API v3 for both buyer browsing and seller shop management",
+  "description": "MCP server for running one Etsy shop from Claude: orders, listings, inventory, sales stats and market research. Elektron Labs fork of aserper/etsy-mcp.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -35,12 +35,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aserper/etsy-mcp.git"
+    "url": "https://github.com/elektronlabs/etsy-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/aserper/etsy-mcp/issues"
+    "url": "https://github.com/elektronlabs/etsy-mcp/issues"
   },
-  "homepage": "https://github.com/aserper/etsy-mcp",
+  "homepage": "https://github.com/elektronlabs/etsy-mcp",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.0",

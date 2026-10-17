@@ -4,7 +4,7 @@ A hardened, trimmed fork of [aserper/etsy-mcp](https://github.com/aserper/etsy-m
 
 ## What this fork changes
 
-- **Login works.** The OAuth callback is fixed at `http://localhost:3003/oauth/redirect`, which is what Etsy requires (an exact match with the URL registered on your app). It listens on 127.0.0.1 only.
+- **Login works.** The OAuth callback defaults to `http://localhost:3003/oauth/redirect`, which is what Etsy requires (an exact match with the URL registered on your app). It listens on 127.0.0.1 only.
 - **Least privilege.** Requests `listings_r listings_w shops_r transactions_r transactions_w` instead of all 20 scopes.
 - **No duplicate writes.** POST and PATCH are never retried after a server error or dropped connection.
 - **Clear login errors.** An expired or failed login tells Claude to call `authenticate` instead of failing silently.
@@ -29,23 +29,60 @@ A hardened, trimmed fork of [aserper/etsy-mcp](https://github.com/aserper/etsy-m
 
 ## Setup
 
+Requires Node.js 20 or newer.
+
 1. Create an app at [etsy.com/developers/your-apps](https://www.etsy.com/developers/your-apps). Set its callback URL to exactly `http://localhost:3003/oauth/redirect`.
 2. Create `~/.etsy-mcp/.env` (on Windows, `C:\Users\<you>\.etsy-mcp\.env`) from `.env.example`. Real environment variables take precedence over the file.
-3. Build: `npm install && npm run build`
+3. Build: `npm ci && npm run build`
 4. Register the server:
    - Claude Code: `claude mcp add etsy -s user -- node /absolute/path/to/etsy-mcp/dist/index.js`
    - Claude Desktop, in `claude_desktop_config.json`:
      ```json
      { "mcpServers": { "etsy": { "command": "node", "args": ["/absolute/path/to/etsy-mcp/dist/index.js"] } } }
      ```
-5. Ask Claude to authenticate with Etsy. Your browser opens Etsy's consent page. Tokens are saved to `~/.etsy-mcp/tokens.json` and refreshed automatically. The refresh token lasts 90 days; after that, authenticate again.
+5. In Claude Code, allow-list the 24 read tools plus `authenticate` so they run without a prompt. Add them by exact name (`mcp__etsy__<tool>`) to `permissions.allow` in `~/.claude/settings.json`, and leave the 8 write tools out so each write asks first:
+   ```json
+   {
+     "permissions": {
+       "allow": [
+         "mcp__etsy__authenticate",
+         "mcp__etsy__find_shops",
+         "mcp__etsy__get_buyer_taxonomy",
+         "mcp__etsy__get_ledger_entries",
+         "mcp__etsy__get_listing",
+         "mcp__etsy__get_listing_images",
+         "mcp__etsy__get_listing_inventory",
+         "mcp__etsy__get_listings_by_shop",
+         "mcp__etsy__get_me",
+         "mcp__etsy__get_payments",
+         "mcp__etsy__get_receipt",
+         "mcp__etsy__get_reviews_by_listing",
+         "mcp__etsy__get_reviews_by_shop",
+         "mcp__etsy__get_sales_summary",
+         "mcp__etsy__get_shipping_carriers",
+         "mcp__etsy__get_shipping_profiles",
+         "mcp__etsy__get_shop",
+         "mcp__etsy__get_shop_receipts",
+         "mcp__etsy__get_shop_sections",
+         "mcp__etsy__get_taxonomy_properties",
+         "mcp__etsy__get_transaction",
+         "mcp__etsy__get_transactions_by_receipt",
+         "mcp__etsy__get_transactions_by_shop",
+         "mcp__etsy__get_unshipped_orders",
+         "mcp__etsy__search_listings"
+       ]
+     }
+   }
+   ```
+   The write tools stay unlisted: `create_draft_listing`, `create_shipment`, `delete_listing_image`, `update_listing`, `update_listing_inventory`, `update_receipt`, `upload_listing_image`, `upload_listing_video`.
+6. Ask Claude to authenticate with Etsy. Your browser opens Etsy's consent page. Tokens are saved to `~/.etsy-mcp/tokens.json` and refreshed automatically. The refresh token lasts 90 days; after that, authenticate again.
 
 To use a different callback port, set `ETSY_REDIRECT_PORT` and register the matching URL on your Etsy app.
 
 ## Development
 
 ```bash
-npm install          # install dependencies
+npm ci               # install dependencies
 npm run build        # compile TypeScript to dist/
 npm test             # unit tests
 npm run lint         # type check
