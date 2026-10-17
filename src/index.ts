@@ -21,19 +21,15 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const ALL_SCOPES = [
-  "address_r", "address_w", "billing_r", "cart_r", "cart_w",
-  "email_r", "favorites_r", "favorites_w", "feedback_r",
-  "listings_d", "listings_r", "listings_w",
-  "profile_r", "profile_w", "recommend_r", "recommend_w",
-  "shops_r", "shops_w", "transactions_r", "transactions_w",
-];
+/** The minimum scopes the registered tools need, per the `security` blocks in Etsy's OpenAPI spec. */
+export const ETSY_SCOPES = ["listings_r", "listings_w", "shops_r", "transactions_r", "transactions_w"];
 
 export interface ServerConfig {
   apiKey: string;
   sharedSecret: string;
   tokenStorePath?: string;
   scopes?: string[];
+  redirectPort?: number;
 }
 
 export function createEtsyMcpServer(config: ServerConfig): McpServer {
@@ -49,7 +45,8 @@ export function createEtsyMcpServer(config: ServerConfig): McpServer {
   const oauthClient = new OAuthClient({
     apiKey: config.apiKey,
     sharedSecret: config.sharedSecret,
-    scopes: config.scopes ?? ALL_SCOPES,
+    scopes: config.scopes ?? ETSY_SCOPES,
+    redirectPort: config.redirectPort,
   });
   const authManager = new AuthManager(tokenStore, oauthClient);
 
@@ -109,7 +106,14 @@ if (isDirectRun) {
     process.exit(1);
   }
 
-  const server = createEtsyMcpServer({ apiKey, sharedSecret });
+  const portSetting = process.env.ETSY_REDIRECT_PORT;
+  const redirectPort = portSetting ? Number(portSetting) : undefined;
+  if (redirectPort !== undefined && !(Number.isInteger(redirectPort) && redirectPort > 0 && redirectPort < 65536)) {
+    console.error("Error: ETSY_REDIRECT_PORT must be a port number between 1 and 65535.");
+    process.exit(1);
+  }
+
+  const server = createEtsyMcpServer({ apiKey, sharedSecret, redirectPort });
   const transport = new StdioServerTransport();
   server.connect(transport).catch((err) => {
     console.error("Fatal error:", err);

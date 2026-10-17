@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createEtsyMcpServer } from "../../src/index.js";
+import { createEtsyMcpServer, ETSY_SCOPES } from "../../src/index.js";
 import { connectClient } from "../helpers/mcp.js";
 
 const READS = [
@@ -87,5 +87,9 @@ describe("tool registry", () => {
     const client = await connectClient(makeServer());
     await client.callTool({ name: "get_shop", arguments: { shop_id: 5 } });
     expect(paths()).toEqual(["/v3/application/shops/5"]);
+  });
+
+  it("requests exactly the five scopes the tools need", () => {
+    expect(ETSY_SCOPES).toEqual(["listings_r", "listings_w", "shops_r", "transactions_r", "transactions_w"]);
   });
 });

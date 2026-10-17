@@ -1,15 +1,35 @@
 import { createHash, randomBytes } from "node:crypto";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import type { StoredTokens } from "./token-store.js";
 import { TokenRefreshError } from "../utils/errors.js";
 
 const ETSY_AUTH_URL = "https://www.etsy.com/oauth/connect";
 const ETSY_TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token";
+const AUTH_TIMEOUT_MS = 120_000;
+
+/** Etsy only accepts a redirect_uri that matches the app's registered callback URL exactly. */
+export const DEFAULT_REDIRECT_PORT = 3003;
+export const REDIRECT_PATH = "/oauth/redirect";
+/** The callback server accepts connections from this machine only. */
+export const CALLBACK_HOST = "127.0.0.1";
 
 export interface OAuthConfig {
   apiKey: string;
   sharedSecret: string;
   scopes: string[];
+  redirectPort?: number;
+  /** Opens the consent page. Tests replace it so no real browser launches. */
+  openBrowser?: (url: string) => Promise<void>;
+}
+
+async function openInDefaultBrowser(url: string): Promise<void> {
+  const { default: open } = await import("open");
+  await open(url);
+}
+
+function reply(res: ServerResponse, status: number, message: string): void {
+  res.writeHead(status, { "Content-Type": "text/html", Connection: "close" });
+  res.end(`<html><body><h1>${message}</h1></body></html>`);
 }
 
 export class OAuthClient {
@@ -17,6 +37,14 @@ export class OAuthClient {
 
   constructor(config: OAuthConfig) {
     this.config = config;
+  }
+
+  private get port(): number {
+    return this.config.redirectPort ?? DEFAULT_REDIRECT_PORT;
+  }
+
+  redirectUri(): string {
+    return `http://localhost:${this.port}${REDIRECT_PATH}`;
   }
 
   generateCodeVerifier(): string {
@@ -120,63 +148,67 @@ export class OAuthClient {
   }
 
   async startLocalAuthFlow(): Promise<{ code: string; redirectUri: string; codeVerifier: string }> {
-    return new Promise((resolve, reject) => {
-      // Generate PKCE verifier and state before starting the server
-      // to avoid race conditions with the callback handler
-      let expectedState: string;
-      let codeVerifier: string;
+    const redirectUri = this.redirectUri();
+    const { url, codeVerifier, state } = await this.buildAuthorizationUrl(redirectUri);
+    const openBrowser = this.config.openBrowser ?? openInDefaultBrowser;
 
-      const server = createServer(
-        (req: IncomingMessage, res: ServerResponse) => {
-          const url = new URL(req.url!, `http://localhost`);
-          const code = url.searchParams.get("code");
-          const returnedState = url.searchParams.get("state");
-
-          if (!code) {
-            res.writeHead(400, { "Content-Type": "text/html" });
-            res.end("<html><body><h1>Authorization failed</h1></body></html>");
-            server.close();
-            reject(new Error(`OAuth callback missing code. State: ${returnedState}`));
-            return;
-          }
-
-          if (returnedState !== expectedState) {
-            res.writeHead(403, { "Content-Type": "text/html" });
-            res.end("<html><body><h1>State mismatch — possible CSRF attack</h1></body></html>");
-            server.close();
-            reject(new Error("OAuth state mismatch: possible CSRF attack"));
-            return;
-          }
-
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end(
-            "<html><body><h1>Authorization successful!</h1><p>You can close this window.</p></body></html>"
-          );
-          server.close();
-          resolve({
-            code,
-            redirectUri: `http://localhost:${(server.address() as any).port}/callback`,
-            codeVerifier,
-          });
+    const code = await new Promise<string>((resolve, reject) => {
+      const server = createServer((req, res) => {
+        const callback = new URL(req.url ?? "/", "http://localhost");
+        if (callback.pathname !== REDIRECT_PATH) {
+          // Browsers also request /favicon.ico and the like; those must not end the login.
+          res.writeHead(404, { Connection: "close" }).end();
+          return;
         }
-      );
 
-      server.listen(0, async () => {
-        const port = (server.address() as any).port;
-        const redirectUri = `http://localhost:${port}/callback`;
-        const authData = await this.buildAuthorizationUrl(redirectUri);
-        codeVerifier = authData.codeVerifier;
-        expectedState = authData.state;
+        const finish = (status: number, message: string, settle: () => void) => {
+          reply(res, status, message);
+          clearTimeout(timer);
+          server.close();
+          settle();
+        };
 
-        const { default: open } = await import("open");
-        await open(authData.url);
-        console.error(`\nOpen this URL to authorize:\n${authData.url}\n`);
+        if (callback.searchParams.get("state") !== state) {
+          finish(403, "State mismatch. Close this window and try again.", () =>
+            reject(new Error("OAuth state mismatch: possible CSRF attack"))
+          );
+          return;
+        }
+
+        const returnedCode = callback.searchParams.get("code");
+        if (!returnedCode) {
+          const reason = callback.searchParams.get("error") ?? "no code returned";
+          finish(400, "Authorization failed. You can close this window.", () =>
+            reject(new Error(`Etsy authorization failed: ${reason}`))
+          );
+          return;
+        }
+
+        finish(200, "Authorization successful! You can close this window.", () => resolve(returnedCode));
       });
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         server.close();
         reject(new Error("OAuth flow timed out after 120 seconds"));
-      }, 120_000);
+      }, AUTH_TIMEOUT_MS);
+
+      server.on("error", (err: NodeJS.ErrnoException) => {
+        clearTimeout(timer);
+        reject(
+          err.code === "EADDRINUSE"
+            ? new Error(`Port ${this.port} is busy. Close whatever is using it, or set ETSY_REDIRECT_PORT and register the matching callback URL on your Etsy app.`)
+            : err
+        );
+      });
+
+      server.listen(this.port, CALLBACK_HOST, () => {
+        console.error(`\nOpen this URL to authorize:\n${url}\n`);
+        openBrowser(url).catch(() => {
+          // The URL is printed above, so the user can open it by hand.
+        });
+      });
     });
+
+    return { code, redirectUri, codeVerifier };
   }
 }
