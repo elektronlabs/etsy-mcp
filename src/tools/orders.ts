@@ -4,7 +4,7 @@ import type { EtsyClient } from "../client/etsy-client.js";
 import type { ShopContext } from "../client/shop-context.js";
 import { paginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { READ, WRITE_ADDITIVE, WRITE_DESTRUCTIVE } from "./annotations.js";
-import { shopIdArg } from "./args.js";
+import { limitArg, offsetArg, shopIdArg } from "./args.js";
 
 export function registerOrdersTools(server: McpServer, client: EtsyClient, shop: ShopContext): void {
   server.registerTool("get_shop_receipts", {
@@ -15,8 +15,8 @@ export function registerOrdersTools(server: McpServer, client: EtsyClient, shop:
       max_created: z.number().optional().describe("Maximum creation timestamp (epoch seconds)"),
       was_paid: z.boolean().optional().describe("Filter by payment status"),
       was_shipped: z.boolean().optional().describe("Filter by shipment status"),
-      limit: z.number().optional().describe("Results per page"),
-      offset: z.number().optional().describe("Offset for pagination"),
+      limit: limitArg,
+      offset: offsetArg,
     },
     annotations: READ,
   }, async (args) => {
@@ -47,8 +47,8 @@ export function registerOrdersTools(server: McpServer, client: EtsyClient, shop:
     description: "List paid orders that still need shipping (not shipped, not canceled), oldest first",
     inputSchema: {
       shop_id: shopIdArg,
-      limit: z.number().optional().describe("Results per page (max 100)"),
-      offset: z.number().optional().describe("Offset for pagination"),
+      limit: limitArg,
+      offset: offsetArg,
     },
     annotations: READ,
   }, async (args) => {

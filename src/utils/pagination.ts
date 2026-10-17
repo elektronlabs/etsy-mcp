@@ -1,5 +1,7 @@
+const MAX_LIMIT = 100;
+
 export function paginationParams(opts: { limit?: number; offset?: number }): Record<string, string> {
-  const limit = Math.min(opts.limit ?? 25, 100);
+  const limit = Math.min(opts.limit ?? 25, MAX_LIMIT);
   const offset = opts.offset ?? 0;
   return { limit: String(limit), offset: String(offset) };
 }
@@ -14,7 +16,7 @@ export function formatPaginatedResponse(
       count: data.count,
       showing: data.results.length,
       offset,
-      limit,
+      limit: Math.min(limit, MAX_LIMIT),
       has_more: offset + data.results.length < data.count,
       results: data.results,
     },

@@ -4,15 +4,15 @@ import type { EtsyClient } from "../client/etsy-client.js";
 import type { ShopContext } from "../client/shop-context.js";
 import { paginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { READ } from "./annotations.js";
-import { shopIdArg } from "./args.js";
+import { limitArg, offsetArg, shopIdArg } from "./args.js";
 
 export function registerReviewsTools(server: McpServer, client: EtsyClient, shop: ShopContext): void {
   server.registerTool("get_reviews_by_listing", {
     description: "Get reviews for a specific listing",
     inputSchema: {
       listing_id: z.number().describe("The listing ID"),
-      limit: z.number().optional().describe("Results per page"),
-      offset: z.number().optional().describe("Offset for pagination"),
+      limit: limitArg,
+      offset: offsetArg,
     },
     annotations: READ,
   }, async (args) => {
@@ -25,8 +25,8 @@ export function registerReviewsTools(server: McpServer, client: EtsyClient, shop
     description: "Get reviews for a shop",
     inputSchema: {
       shop_id: shopIdArg,
-      limit: z.number().optional().describe("Results per page"),
-      offset: z.number().optional().describe("Offset for pagination"),
+      limit: limitArg,
+      offset: offsetArg,
     },
     annotations: READ,
   }, async (args) => {

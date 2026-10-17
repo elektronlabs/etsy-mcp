@@ -4,7 +4,7 @@ import type { EtsyClient } from "../client/etsy-client.js";
 import type { ShopContext } from "../client/shop-context.js";
 import { paginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { READ, WRITE_ADDITIVE, WRITE_DESTRUCTIVE } from "./annotations.js";
-import { shopIdArg } from "./args.js";
+import { limitArg, offsetArg, shopIdArg } from "./args.js";
 
 export function registerListingsTools(server: McpServer, client: EtsyClient, shop: ShopContext): void {
   server.registerTool(
@@ -18,8 +18,8 @@ export function registerListingsTools(server: McpServer, client: EtsyClient, sho
         max_price: z.number().optional().describe("Maximum price in USD"),
         sort_on: z.enum(["created", "price", "updated", "score"]).optional().describe("Sort field"),
         sort_order: z.enum(["asc", "desc"]).optional().describe("Sort direction"),
-        limit: z.number().optional().describe("Results per page (max 100)"),
-        offset: z.number().optional().describe("Offset for pagination"),
+        limit: limitArg,
+        offset: offsetArg,
       },
       annotations: READ,
     },
@@ -123,8 +123,8 @@ export function registerListingsTools(server: McpServer, client: EtsyClient, sho
       inputSchema: {
         shop_id: shopIdArg,
         state: z.enum(["active", "inactive", "draft", "expired", "sold_out"]).optional().describe("Filter by listing state"),
-        limit: z.number().optional().describe("Results per page"),
-        offset: z.number().optional().describe("Offset for pagination"),
+        limit: limitArg,
+        offset: offsetArg,
       },
       annotations: READ,
     },

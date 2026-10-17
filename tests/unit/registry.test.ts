@@ -89,6 +89,32 @@ describe("tool registry", () => {
     expect(paths()).toEqual(["/v3/application/shops/5"]);
   });
 
+  describe("paging inputs", () => {
+    const PAGED = [
+      "find_shops", "get_listings_by_shop", "search_listings", "get_shop_receipts", "get_unshipped_orders",
+      "get_transactions_by_shop", "get_reviews_by_listing", "get_reviews_by_shop", "get_ledger_entries",
+    ];
+
+    it("bounds limit to 1-100 whole numbers and offset to whole numbers from 0 on every paged tool", async () => {
+      const tools = await listTools();
+      for (const name of PAGED) {
+        const props = (tools.find((t) => t.name === name)?.inputSchema as { properties: Record<string, { type?: string; minimum?: number; maximum?: number }> }).properties;
+        expect(props.limit, name).toMatchObject({ type: "integer", minimum: 1, maximum: 100 });
+        expect(props.offset, name).toMatchObject({ type: "integer", minimum: 0 });
+      }
+    });
+
+    it("rejects a limit of 0 or a fractional offset before calling Etsy", async () => {
+      const paths = stubEtsy(777);
+      const client = await connectClient(makeServer());
+      const zero = await client.callTool({ name: "get_shop_receipts", arguments: { shop_id: 5, limit: 0 } });
+      const fraction = await client.callTool({ name: "get_shop_receipts", arguments: { shop_id: 5, offset: 1.5 } });
+      expect(zero.isError).toBe(true);
+      expect(fraction.isError).toBe(true);
+      expect(paths()).toEqual([]);
+    });
+  });
+
   it("requests exactly the five scopes the tools need", () => {
     expect(ETSY_SCOPES).toEqual(["listings_r", "listings_w", "shops_r", "transactions_r", "transactions_w"]);
   });

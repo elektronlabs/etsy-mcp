@@ -4,7 +4,7 @@ import type { EtsyClient } from "../client/etsy-client.js";
 import type { ShopContext } from "../client/shop-context.js";
 import { paginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { READ } from "./annotations.js";
-import { shopIdArg } from "./args.js";
+import { limitArg, offsetArg, shopIdArg } from "./args.js";
 
 export function registerPaymentsTools(server: McpServer, client: EtsyClient, shop: ShopContext): void {
   server.registerTool("get_payments", {
@@ -29,8 +29,8 @@ export function registerPaymentsTools(server: McpServer, client: EtsyClient, sho
       shop_id: shopIdArg,
       min_created: z.number().optional().describe("Minimum creation timestamp"),
       max_created: z.number().optional().describe("Maximum creation timestamp"),
-      limit: z.number().optional().describe("Results per page"),
-      offset: z.number().optional().describe("Offset for pagination"),
+      limit: limitArg,
+      offset: offsetArg,
     },
     annotations: READ,
   }, async (args) => {
