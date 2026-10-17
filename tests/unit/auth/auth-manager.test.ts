@@ -116,4 +116,25 @@ describe("AuthManager", () => {
     await expect(manager.authenticate()).resolves.toBe("new-token");
     expect(oauthClient.startLocalAuthFlow).toHaveBeenCalled();
   });
+
+  it("shares one refresh between parallel callers", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "r1", expires_at: Date.now() - 1000 });
+
+    const both = await Promise.all([manager.getAccessToken(), manager.getAccessToken()]);
+
+    expect(both).toEqual(["refreshed-token", "refreshed-token"]);
+    expect(oauthClient.refreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a newer login saved by someone else when the old refresh token is rejected", async () => {
+    await tokenStore.save({ access_token: "old", refresh_token: "r1", expires_at: Date.now() - 1000 });
+    (oauthClient.refreshAccessToken as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      // Another process refreshed first and saved a new login.
+      await tokenStore.save({ access_token: "fresh", refresh_token: "r2", expires_at: Date.now() + 3600_000 });
+      throw new TokenRefreshError(400, '{"error":"invalid_grant"}');
+    });
+
+    await expect(manager.getAccessToken()).resolves.toBe("fresh");
+    expect(tokenStore.clear).not.toHaveBeenCalled();
+  });
 });

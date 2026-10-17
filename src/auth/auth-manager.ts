@@ -6,6 +6,8 @@ const NOT_SIGNED_IN = "This needs your Etsy login. Call the authenticate tool fi
 const LOGIN_EXPIRED = "Your Etsy login has expired. Call the authenticate tool to sign in again.";
 
 export class AuthManager {
+  private refreshing: Promise<string> | null = null;
+
   constructor(
     private tokenStore: TokenStore,
     private oauthClient: OAuthClient
@@ -43,13 +45,26 @@ export class AuthManager {
     return tokens.access_token;
   }
 
-  private async refresh(refreshToken: string): Promise<string> {
+  /** Parallel tool calls share one refresh, so a refresh token is never spent twice. */
+  private refresh(refreshToken: string): Promise<string> {
+    if (!this.refreshing) {
+      this.refreshing = this.refreshOnce(refreshToken).finally(() => {
+        this.refreshing = null;
+      });
+    }
+    return this.refreshing;
+  }
+
+  private async refreshOnce(refreshToken: string): Promise<string> {
     try {
       const refreshed = await this.oauthClient.refreshAccessToken(refreshToken);
       await this.tokenStore.save(refreshed);
       return refreshed.access_token;
     } catch (err) {
       if (err instanceof TokenRefreshError && err.isInvalidGrant) {
+        // Another process may have refreshed first and saved a newer login: keep it.
+        const current = await this.tokenStore.load();
+        if (current && current.refresh_token !== refreshToken) return current.access_token;
         await this.tokenStore.clear();
         throw new EtsyAuthError(LOGIN_EXPIRED);
       }
