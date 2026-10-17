@@ -17,6 +17,7 @@ import { registerImagesTools } from "./tools/images.js";
 import { registerInventoryTools } from "./tools/inventory.js";
 import { registerPaymentsTools } from "./tools/payments.js";
 import { registerStatsTools } from "./tools/stats.js";
+import { etsyEnvPath, loadEnvFile } from "./env.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -95,14 +96,13 @@ const currentFile = fileURLToPath(import.meta.url);
 const isDirectRun = process.argv[1] && currentFile === process.argv[1];
 
 if (isDirectRun) {
-  // Load .env file when running as CLI
-  await import("dotenv/config");
+  loadEnvFile();
   const apiKey = process.env.ETSY_API_KEY;
   const sharedSecret = process.env.ETSY_SHARED_SECRET;
 
   if (!apiKey || !sharedSecret) {
-    console.error("Error: ETSY_API_KEY and ETSY_SHARED_SECRET environment variables are required.");
-    console.error("See .env.example for the expected format.");
+    console.error("Error: ETSY_API_KEY and ETSY_SHARED_SECRET are required.");
+    console.error(`Put them in ${etsyEnvPath()} (see .env.example) or set them as environment variables.`);
     process.exit(1);
   }
 
