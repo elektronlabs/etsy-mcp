@@ -5,18 +5,17 @@ import { TokenStore } from "./auth/token-store.js";
 import { OAuthClient } from "./auth/oauth.js";
 import { AuthManager } from "./auth/auth-manager.js";
 import { EtsyClient } from "./client/etsy-client.js";
+import { ShopContext } from "./client/shop-context.js";
+import { READ } from "./tools/annotations.js";
 import { registerListingsTools } from "./tools/listings.js";
 import { registerShopTools } from "./tools/shop.js";
 import { registerOrdersTools } from "./tools/orders.js";
 import { registerTransactionsTools } from "./tools/transactions.js";
-import { registerShippingTools } from "./tools/shipping.js";
 import { registerReviewsTools } from "./tools/reviews.js";
-import { registerUsersTools } from "./tools/users.js";
 import { registerTaxonomyTools } from "./tools/taxonomy.js";
 import { registerImagesTools } from "./tools/images.js";
 import { registerInventoryTools } from "./tools/inventory.js";
 import { registerPaymentsTools } from "./tools/payments.js";
-import { registerReturnPoliciesTools } from "./tools/return-policies.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -64,6 +63,7 @@ export function createEtsyMcpServer(config: ServerConfig): McpServer {
     "authenticate",
     {
       description: "Authenticate with Etsy via OAuth 2.0. Opens a browser for consent. Required before using tools that need user authorization.",
+      annotations: READ,
     },
     async () => {
       const token = await authManager.authenticate();
@@ -76,18 +76,17 @@ export function createEtsyMcpServer(config: ServerConfig): McpServer {
     }
   );
 
-  registerListingsTools(server, client);
-  registerShopTools(server, client);
-  registerOrdersTools(server, client);
-  registerTransactionsTools(server, client);
-  registerShippingTools(server, client);
-  registerReviewsTools(server, client);
-  registerUsersTools(server, client);
+  const shop = new ShopContext(client);
+
+  registerListingsTools(server, client, shop);
+  registerShopTools(server, client, shop);
+  registerOrdersTools(server, client, shop);
+  registerTransactionsTools(server, client, shop);
+  registerReviewsTools(server, client, shop);
   registerTaxonomyTools(server, client);
-  registerImagesTools(server, client);
+  registerImagesTools(server, client, shop);
   registerInventoryTools(server, client);
-  registerPaymentsTools(server, client);
-  registerReturnPoliciesTools(server, client);
+  registerPaymentsTools(server, client, shop);
 
   return server;
 }

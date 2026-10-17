@@ -1,11 +1,13 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { EtsyClient } from "../client/etsy-client.js";
+import { READ, WRITE_DESTRUCTIVE } from "./annotations.js";
 
 export function registerInventoryTools(server: McpServer, client: EtsyClient): void {
   server.registerTool("get_listing_inventory", {
     description: "Get inventory (products, offerings, variations) for a listing",
     inputSchema: { listing_id: z.number().describe("The listing ID") },
+    annotations: READ,
   }, async (args) => {
     const data = await client.get(`/listings/${args.listing_id}/inventory`);
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -29,6 +31,7 @@ export function registerInventoryTools(server: McpServer, client: EtsyClient): v
         })),
       })).describe("Product inventory data"),
     },
+    annotations: WRITE_DESTRUCTIVE,
   }, async (args) => {
     const data = await client.put(`/listings/${args.listing_id}/inventory`, { products: args.products });
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
