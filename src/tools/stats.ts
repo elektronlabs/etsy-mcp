@@ -88,7 +88,8 @@ export async function buildSalesSummary(
   }
 
   // Canceled orders are filtered by Etsy; fully refunded ones are dropped here.
-  const counted = receipts.filter((receipt) => receipt.status !== "fully refunded");
+  // Etsy writes the status capitalized ("Fully Refunded"); compare without case.
+  const counted = receipts.filter((receipt) => receipt.status.toLowerCase() !== "fully refunded");
 
   let grossCents = 0;
   let subtotalCents = 0;
@@ -149,7 +150,10 @@ export function registerStatsTools(server: McpServer, client: EtsyClient, shop: 
     description:
       "Sales summary for a date range (whole UTC days, inclusive): orders, units, item subtotal, gross total, " +
       "top 10 listings by revenue, and up to 20 active listings with no sales in the range. " +
-      "Canceled and fully refunded orders are excluded.",
+      "Canceled and fully refunded orders are excluded. " +
+      "top_listings.revenue is price x quantity before coupon discounts, while item_subtotal is after them, so the two can differ. " +
+      "Totals cover at most 2,000 receipts (truncated is true when more exist). " +
+      "Slow movers are drawn from the oldest 500 active listings.",
     inputSchema: {
       start_date: isoDate.describe("First day, YYYY-MM-DD (UTC)"),
       end_date: isoDate.describe("Last day, YYYY-MM-DD (UTC), inclusive"),

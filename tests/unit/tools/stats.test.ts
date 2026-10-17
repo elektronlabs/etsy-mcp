@@ -93,6 +93,24 @@ describe("buildSalesSummary", () => {
     });
   });
 
+  it("recognizes Etsy's capitalized \"Fully Refunded\" status", async () => {
+    const etsy = fakeEtsy(
+      [{
+        count: 2,
+        results: [
+          { status: "Paid", grandtotal: usd(1000), subtotal: usd(900), transactions: [{ listing_id: 10, title: "Mug", quantity: 1, price: usd(900) }] },
+          { status: "Fully Refunded", grandtotal: usd(5000), subtotal: usd(5000), transactions: [{ listing_id: 30, title: "Lamp", quantity: 1, price: usd(5000) }] },
+        ],
+      }],
+      [],
+    );
+
+    const summary = await buildSalesSummary(etsy, 7, "2026-09-01", "2026-09-30");
+
+    expect(summary).toMatchObject({ orders: 1, units: 1, gross_total: 10, item_subtotal: 9, excluded_refunded_orders: 1 });
+    expect(summary.top_listings.map((row) => row.listing_id)).toEqual([10]);
+  });
+
   it("stops at the receipt cap and says so", async () => {
     const fullPage = {
       count: 2500,
