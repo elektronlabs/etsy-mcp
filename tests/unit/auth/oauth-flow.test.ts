@@ -40,6 +40,9 @@ describe("OAuthClient local login", () => {
     expect(listen.mock.calls[0]?.[1]).toBe("127.0.0.1");
     expect(authUrl.searchParams.get("redirect_uri")).toBe("http://localhost:38123/oauth/redirect");
 
+    const malformed = await fetch("http://127.0.0.1:38123//");
+    expect(malformed.status).toBe(404);
+
     const stray = await fetch("http://127.0.0.1:38123/favicon.ico");
     expect(stray.status).toBe(404);
 

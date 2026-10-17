@@ -154,12 +154,13 @@ export class OAuthClient {
 
     const code = await new Promise<string>((resolve, reject) => {
       const server = createServer((req, res) => {
-        const callback = new URL(req.url ?? "/", "http://localhost");
-        if (callback.pathname !== REDIRECT_PATH) {
-          // Browsers also request /favicon.ico and the like; those must not end the login.
+        const rawUrl = req.url ?? "/";
+        if (rawUrl.split("?")[0] !== REDIRECT_PATH) {
+          // Browsers also request /favicon.ico, and anything can send malformed paths like "//"; none of these end the login.
           res.writeHead(404, { Connection: "close" }).end();
           return;
         }
+        const callback = new URL(rawUrl, "http://localhost");
 
         const finish = (status: number, message: string, settle: () => void) => {
           reply(res, status, message);
