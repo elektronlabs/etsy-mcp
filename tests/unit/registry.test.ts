@@ -5,7 +5,7 @@ import { createEtsyMcpServer } from "../../src/index.js";
 import { connectClient } from "../helpers/mcp.js";
 
 const READS = [
-  "authenticate", "find_shops", "get_buyer_taxonomy", "get_ledger_entries", "get_listing",
+  "find_shops", "get_buyer_taxonomy", "get_ledger_entries", "get_listing",
   "get_listing_images", "get_listing_inventory", "get_listings_by_shop", "get_me", "get_payments",
   "get_receipt", "get_reviews_by_listing", "get_reviews_by_shop", "get_shipping_carriers",
   "get_shipping_profiles", "get_shop", "get_shop_receipts", "get_shop_sections",
@@ -14,6 +14,7 @@ const READS = [
 ];
 const ADDITIVE_WRITES = ["create_draft_listing", "create_shipment", "upload_listing_image", "upload_listing_video"];
 const DESTRUCTIVE_WRITES = ["delete_listing_image", "update_listing", "update_listing_inventory", "update_receipt"];
+const SIGN_IN_TOOLS = ["authenticate"];
 
 function makeServer() {
   return createEtsyMcpServer({
@@ -43,7 +44,7 @@ describe("tool registry", () => {
 
   it("registers exactly the expected tools", async () => {
     const names = (await listTools()).map((tool) => tool.name).sort();
-    expect(names).toEqual([...READS, ...ADDITIVE_WRITES, ...DESTRUCTIVE_WRITES].sort());
+    expect(names).toEqual([...READS, ...ADDITIVE_WRITES, ...DESTRUCTIVE_WRITES, ...SIGN_IN_TOOLS].sort());
   });
 
   it("marks every read tool read-only", async () => {
@@ -62,6 +63,11 @@ describe("tool registry", () => {
     for (const tool of (await listTools()).filter((t) => DESTRUCTIVE_WRITES.includes(t.name))) {
       expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: true });
     }
+  });
+
+  it("marks authenticate as a non-destructive local write", async () => {
+    const tool = (await listTools()).find((t) => t.name === "authenticate");
+    expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
   });
 
   it("defaults shop_id to the signed-in seller's shop, looked up once", async () => {

@@ -6,7 +6,7 @@ import { OAuthClient } from "./auth/oauth.js";
 import { AuthManager } from "./auth/auth-manager.js";
 import { EtsyClient } from "./client/etsy-client.js";
 import { ShopContext } from "./client/shop-context.js";
-import { READ } from "./tools/annotations.js";
+import { SIGN_IN } from "./tools/annotations.js";
 import { registerListingsTools } from "./tools/listings.js";
 import { registerShopTools } from "./tools/shop.js";
 import { registerOrdersTools } from "./tools/orders.js";
@@ -63,7 +63,7 @@ export function createEtsyMcpServer(config: ServerConfig): McpServer {
     "authenticate",
     {
       description: "Authenticate with Etsy via OAuth 2.0. Opens a browser for consent. Required before using tools that need user authorization.",
-      annotations: READ,
+      annotations: SIGN_IN,
     },
     async () => {
       const token = await authManager.authenticate();
