@@ -43,6 +43,28 @@ export function registerOrdersTools(server: McpServer, client: EtsyClient, shop:
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
   });
 
+  server.registerTool("get_unshipped_orders", {
+    description: "List paid orders that still need shipping (not shipped, not canceled), oldest first",
+    inputSchema: {
+      shop_id: shopIdArg,
+      limit: z.number().optional().describe("Results per page (max 100)"),
+      offset: z.number().optional().describe("Offset for pagination"),
+    },
+    annotations: READ,
+  }, async (args) => {
+    const shopId = await shop.resolve(args.shop_id);
+    const params: Record<string, string> = {
+      ...paginationParams({ limit: args.limit, offset: args.offset }),
+      was_paid: "true",
+      was_shipped: "false",
+      was_canceled: "false",
+      sort_on: "created",
+      sort_order: "asc",
+    };
+    const data = await client.get<{ count: number; results: unknown[] }>(`/shops/${shopId}/receipts`, params);
+    return { content: [{ type: "text" as const, text: formatPaginatedResponse(data, args.limit ?? 25, args.offset ?? 0) }] };
+  });
+
   server.registerTool("update_receipt", {
     description: "Update a receipt (e.g., mark as shipped)",
     inputSchema: {
