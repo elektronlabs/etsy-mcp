@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OAuthClient } from "../../../src/auth/oauth.js";
+import { TokenRefreshError } from "../../../src/utils/errors.js";
 
 describe("OAuthClient", () => {
   let client: OAuthClient;
@@ -81,6 +82,20 @@ describe("OAuthClient", () => {
     expect(tokens.access_token).toBe("refreshed-access");
     expect(tokens.refresh_token).toBe("refreshed-refresh");
 
+    vi.unstubAllGlobals();
+  });
+
+  it("throws a TokenRefreshError that recognises invalid_grant", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: () => Promise.resolve('{"error":"invalid_grant","error_description":"expired"}'),
+    }));
+
+    const err = await client.refreshAccessToken("dead").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TokenRefreshError);
+    expect((err as TokenRefreshError).isInvalidGrant).toBe(true);
     vi.unstubAllGlobals();
   });
 });

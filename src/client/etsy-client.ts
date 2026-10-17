@@ -1,4 +1,4 @@
-import { EtsyApiError } from "../utils/errors.js";
+import { EtsyApiError, EtsyAuthError } from "../utils/errors.js";
 
 const BASE_URL = "https://openapi.etsy.com/v3/application";
 const MAX_RETRIES = 3;
@@ -131,7 +131,7 @@ export class EtsyClient {
         const errorBody = await response.json().catch(() => null);
         throw new EtsyApiError(response.status, errorBody);
       } catch (err) {
-        if (err instanceof EtsyApiError) throw err;
+        if (err instanceof EtsyApiError || err instanceof EtsyAuthError) throw err;
         if (!retrySafe) throw new Error(notRetried(method, path, (err as Error).message));
         lastError = err as Error;
         if (attempt === MAX_RETRIES) throw lastError;

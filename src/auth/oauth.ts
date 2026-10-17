@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { StoredTokens } from "./token-store.js";
+import { TokenRefreshError } from "../utils/errors.js";
 
 const ETSY_AUTH_URL = "https://www.etsy.com/oauth/connect";
 const ETSY_TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token";
@@ -102,8 +103,7 @@ export class OAuthClient {
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Token refresh failed (${response.status}): ${text}`);
+      throw new TokenRefreshError(response.status, await response.text());
     }
 
     const data = (await response.json()) as {

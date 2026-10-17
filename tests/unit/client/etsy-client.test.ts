@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EtsyClient, EtsyApiError } from "../../../src/client/etsy-client.js";
+import { EtsyAuthError } from "../../../src/utils/errors.js";
 
 describe("EtsyClient", () => {
   let client: EtsyClient;
@@ -185,5 +186,20 @@ describe("EtsyClient", () => {
 
     await expect(client.get("/listings/active")).resolves.toEqual({ ok: 1 });
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes auth errors through instead of retrying them", async () => {
+    client = new EtsyClient({
+      apiKey: "test-key",
+      sharedSecret: "test-secret",
+      getAccessToken: async () => null,
+      onTokenExpired: async () => {
+        throw new EtsyAuthError("This needs your Etsy login. Call the authenticate tool first.");
+      },
+    });
+    mockFetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) });
+
+    await expect(client.get("/shops/1/receipts")).rejects.toThrow(EtsyAuthError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
