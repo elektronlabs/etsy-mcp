@@ -7,7 +7,7 @@ import { connectClient } from "../helpers/mcp.js";
 const READS = [
   "find_shops", "get_buyer_taxonomy", "get_ledger_entries", "get_listing",
   "get_listing_images", "get_listing_inventory", "get_listings_by_shop", "get_me", "get_payments",
-  "get_receipt", "get_reviews_by_listing", "get_reviews_by_shop", "get_shipping_carriers", "get_unshipped_orders",
+  "get_receipt", "get_reviews_by_listing", "get_reviews_by_shop", "get_sales_summary", "get_shipping_carriers", "get_unshipped_orders",
   "get_shipping_profiles", "get_shop", "get_shop_receipts", "get_shop_sections",
   "get_taxonomy_properties", "get_transaction", "get_transactions_by_receipt",
   "get_transactions_by_shop", "search_listings",

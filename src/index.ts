@@ -16,6 +16,7 @@ import { registerTaxonomyTools } from "./tools/taxonomy.js";
 import { registerImagesTools } from "./tools/images.js";
 import { registerInventoryTools } from "./tools/inventory.js";
 import { registerPaymentsTools } from "./tools/payments.js";
+import { registerStatsTools } from "./tools/stats.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,7 @@ export function createEtsyMcpServer(config: ServerConfig): McpServer {
   registerImagesTools(server, client, shop);
   registerInventoryTools(server, client);
   registerPaymentsTools(server, client, shop);
+  registerStatsTools(server, client, shop);
 
   return server;
 }
