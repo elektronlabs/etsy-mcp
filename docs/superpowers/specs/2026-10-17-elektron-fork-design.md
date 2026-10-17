@@ -31,7 +31,7 @@ Clean: only calls `openapi.etsy.com`, `api.etsy.com`, `www.etsy.com`; no exec/ev
 | F3 | Retries POST/PATCH on 5xx and network errors → a timed-out `create_draft_listing` or `create_shipment` can run twice. | Retry on 5xx / network error only for GET, PUT, DELETE. Retry 429 for all methods (request was rejected, not processed). POST/PATCH 5xx → throw immediately with the status. |
 | F4 | Refresh failure is swallowed: `getAccessToken` returns `null`, `handleTokenExpired` deletes the token file, and calls go out unauthenticated, surfacing as confusing 401/403s. | Auth failures throw an `EtsyAuthError` whose message tells Claude to call `authenticate`. Token file is only cleared when Etsy returns `invalid_grant` (refresh token dead), not on network errors. |
 | F5 | `upload_listing_image` / `upload_listing_video` read any path on disk. Filename derived by splitting on `/`, which breaks on Windows paths. | Allow only `.jpg .jpeg .png .gif .webp` (image) and `.mp4 .mov` (video), checked case-insensitively on the resolved path; reject otherwise. Use `path.basename`. |
-| F6 | `dotenv/config` loads `.env` from the process cwd; Claude Desktop/Code launch the server from elsewhere, so keys are never found. | Load `.env` from the package root, resolved relative to `dist/index.js`. Real env vars still win. |
+| F6 | `dotenv/config` loads `.env` from the process cwd; Claude Desktop/Code launch the server from elsewhere, so keys are never found. dotenv 17 also logs `◇ injecting env…` to stdout, which corrupts the MCP stdio stream. | Load keys from `~/.etsy-mcp/.env` (beside `tokens.json`) with `quiet: true`. Not the project folder: `D:\PROJECTS` is mirrored to the VPS by Syncthing, `.env` included, and Elektron Labs rules forbid plaintext secrets there. Real env vars still win. |
 
 ### 2. Tool surface (41 → 33)
 
@@ -40,8 +40,8 @@ Clean: only calls `openapi.etsy.com`, `api.etsy.com`, `www.etsy.com`; no exec/ev
 **Added:**
 
 - `get_unshipped_orders` — receipts with `was_paid=true`, `was_shipped=false`, `was_canceled=false`, oldest first. Optional `limit` / `offset`.
-- `get_sales_summary` — input `start_date`, `end_date` (ISO `YYYY-MM-DD`, inclusive, read as UTC days; the output says so). Pages `getShopReceipts` (limit 100) over the range, excluding canceled receipts, capped at 2,000 receipts (`truncated: true` if hit). Output:
-  - `orders`, `units`, `item_subtotal`, `gross_total` (sum of receipt `grandtotal`), currency
+- `get_sales_summary` — input `start_date`, `end_date` (ISO `YYYY-MM-DD`, inclusive, read as UTC days; the output says so). Pages `getShopReceipts` (limit 100) over the range with `was_canceled=false`, drops receipts whose `status` is `fully refunded`, capped at 2,000 receipts (`truncated: true` if hit). Output:
+  - `orders`, `units`, `item_subtotal`, `gross_total` (sum of receipt `grandtotal`), currency, `excluded_refunded_orders`
   - `top_listings` — top 10 by revenue: `listing_id`, `title`, `units`, `revenue`
   - `slow_movers` — active listings (`getListingsByShop state=active`) with zero units in the range, up to 20, oldest `created_timestamp` first
   - Money is converted from Etsy's `{amount, divisor, currency_code}` to decimal numbers.
@@ -69,14 +69,16 @@ Final 33 tools:
 ### 3. Repo housekeeping
 
 - Delete `.github/workflows/docker-publish.yml`, `Dockerfile`. Keep `test.yml` and `stale.yml`.
-- `.env.example` gains `ETSY_REDIRECT_PORT=3003` (optional) with a comment on registering the callback URL.
-- README: add an "Elektron Labs fork" section at the top — what changed, setup steps below. Keep the upstream MIT `LICENSE` untouched.
+- `.env.example` says to copy it to `~/.etsy-mcp/.env` and gains `ETSY_REDIRECT_PORT=3003` (optional) with a comment on registering the callback URL.
+- `tests/integration/ping.test.ts` sends `keystring:shared_secret` (upstream sends the bare keystring, which Etsy now rejects).
+- `scripts/smoke-stdio.mjs` (`npm run smoke`): starts `dist/index.js` over stdio from another folder and asserts 33 tools.
+- README: rewritten for the fork — credit to upstream, what changed, the 33-tool table, setup. Keep the upstream MIT `LICENSE` untouched.
 - `package.json`: version `1.1.0-elektron`, keep author, add `contributors` entry.
 
 ## Setup (Devin, one time)
 
 1. etsy.com/developers → Create app (personal access). Callback URL: `http://localhost:3003/oauth/redirect`.
-2. Copy keystring + shared secret into `D:\PROJECTS\etsy-mcp\.env` (gitignored).
+2. Copy keystring + shared secret into `C:\Users\Devin\.etsy-mcp\.env` (outside the Syncthing-mirrored project tree).
 3. `npm ci && npm run build`.
 4. Register:
    - Claude Code: `claude mcp add etsy -s user -- node D:\PROJECTS\etsy-mcp\dist\index.js`
@@ -97,6 +99,6 @@ Final 33 tools:
   - `get_unshipped_orders`: sends the three filters + oldest-first sort.
   - `get_sales_summary`: money math with divisors, cancel exclusion, top-10 ordering, slow movers, 2,000 cap → `truncated`.
   - Every registered tool has annotations; removed tool names are not registered; count is 33.
-  - F6: `.env` next to the package is loaded when cwd is elsewhere; an existing env var is not overwritten.
+  - F6: `~/.etsy-mcp/.env` is loaded regardless of cwd; an existing env var is not overwritten; nothing is written to stdout.
 - `npm run lint` (tsc) clean, `npm run build` succeeds.
 - Live smoke (after Devin's setup, read-only): `authenticate`, `get_me`, `get_shop`, `get_unshipped_orders`, `get_sales_summary` for last 30 days, `search_listings` for a niche keyword. No live writes without Devin's explicit OK.
