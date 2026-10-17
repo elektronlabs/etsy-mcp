@@ -44,11 +44,16 @@ export interface SalesSummary {
   slow_movers: Array<{ listing_id: number; title: string; created: string }>;
 }
 
+/** Date.parse rolls impossible days over (2026-02-30 becomes March 2); a real day round-trips to the same text. */
+function isRealDay(epochSeconds: number, date: string): boolean {
+  return !Number.isNaN(epochSeconds) && new Date(epochSeconds * 1000).toISOString().slice(0, 10) === date;
+}
+
 /** Inclusive range of whole UTC days, as epoch seconds. */
 export function dayRangeUtc(startDate: string, endDate: string): { min: number; max: number } {
   const min = Date.parse(`${startDate}T00:00:00Z`) / 1000;
   const max = Date.parse(`${endDate}T23:59:59Z`) / 1000;
-  if (Number.isNaN(min) || Number.isNaN(max)) {
+  if (!isRealDay(min, startDate) || !isRealDay(max, endDate)) {
     throw new Error("Invalid date. Use YYYY-MM-DD.");
   }
   if (min > max) {

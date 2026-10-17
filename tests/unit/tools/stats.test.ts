@@ -27,6 +27,11 @@ describe("dayRangeUtc", () => {
     expect(() => dayRangeUtc("2026-13-01", "2026-12-01")).toThrow("Invalid date");
     expect(() => dayRangeUtc("2026-09-30", "2026-09-01")).toThrow("on or before");
   });
+
+  it("rejects calendar days that don't exist", () => {
+    expect(() => dayRangeUtc("2026-09-01", "2026-09-31")).toThrow("Invalid date");
+    expect(() => dayRangeUtc("2026-02-30", "2026-03-01")).toThrow("Invalid date");
+  });
 });
 
 describe("buildSalesSummary", () => {
@@ -106,5 +111,56 @@ describe("buildSalesSummary", () => {
   it("reports no currency when there were no orders", async () => {
     const summary = await buildSalesSummary(fakeEtsy([], []), 7, "2026-09-01", "2026-09-01");
     expect(summary).toMatchObject({ orders: 0, units: 0, gross_total: 0, currency: null, top_listings: [], slow_movers: [] });
+  });
+
+  it("adds a listing up across orders, keeps the top 10, and fills 20 slow movers across listing pages", async () => {
+    const line = (listing_id: number, quantity: number, cents: number) => ({ listing_id, title: `L${listing_id}`, quantity, price: usd(cents) });
+    const paid = (...transactions: unknown[]) => ({ status: "paid", grandtotal: usd(0), subtotal: usd(0), transactions });
+    const receipts = [
+      paid(line(1, 1, 5000)),
+      paid(line(1, 2, 5000)),
+      ...Array.from({ length: 11 }, (_, i) => paid(line(i + 2, 1, 1000 - i * 10))),
+    ];
+    const listing = (listing_id: number) => ({ listing_id, title: `L${listing_id}`, created_timestamp: 1600000000 });
+    const soldIds = Array.from({ length: 92 }, (_, i) => (i % 12) + 1);
+    const etsy = fakeEtsy(
+      [{ count: receipts.length, results: receipts }],
+      [
+        { count: 130, results: [...soldIds.map(listing), ...[201, 202, 203, 204, 205, 206, 207, 208].map(listing)] },
+        { count: 130, results: Array.from({ length: 30 }, (_, i) => listing(301 + i)) },
+      ],
+    );
+
+    const summary = await buildSalesSummary(etsy, 7, "2026-09-01", "2026-09-30");
+
+    expect(summary.units).toBe(14);
+    expect(summary.top_listings).toHaveLength(10);
+    expect(summary.top_listings[0]).toEqual({ listing_id: 1, title: "L1", units: 3, revenue: 150 });
+    expect(summary.top_listings.map((row) => row.listing_id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(summary.slow_movers.map((row) => row.listing_id)).toEqual([
+      201, 202, 203, 204, 205, 206, 207, 208, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312,
+    ]);
+    const listingOffsets = etsy.get.mock.calls
+      .filter(([path]) => path.endsWith("/listings"))
+      .map((call) => (call as unknown[])[1] as { offset: string })
+      .map((params) => params.offset);
+    expect(listingOffsets).toEqual(["0", "100"]);
+  });
+
+  it("stops paging receipts once Etsy's count is reached", async () => {
+    const paidOrder = { status: "paid", grandtotal: usd(100), subtotal: usd(100), transactions: [] };
+    const etsy = fakeEtsy(
+      [
+        { count: 150, results: Array.from({ length: 100 }, () => paidOrder) },
+        { count: 150, results: Array.from({ length: 50 }, () => paidOrder) },
+      ],
+      [],
+    );
+
+    const summary = await buildSalesSummary(etsy, 7, "2026-09-01", "2026-09-30");
+
+    expect(summary.orders).toBe(150);
+    expect(summary.truncated).toBe(false);
+    expect(etsy.get.mock.calls.filter(([path]) => path.endsWith("/receipts"))).toHaveLength(2);
   });
 });
