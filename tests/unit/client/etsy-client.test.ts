@@ -65,6 +65,29 @@ describe("EtsyClient", () => {
     await expect(client.get("/listings/999")).rejects.toThrow(EtsyApiError);
   });
 
+  it("puts Etsy's own error text in the message Claude sees", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: "Invalid listing_id" }),
+    });
+
+    await expect(client.get("/listings/abc")).rejects.toThrow("Invalid listing_id");
+  });
+
+  it("tells Claude to sign in again when a 401 survives the token refresh", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: "invalid_token" }),
+    });
+
+    const failure = client.get("/shops/1/receipts");
+    await expect(failure).rejects.toThrow(EtsyApiError);
+    await expect(failure).rejects.toThrow(/invalid_token/);
+    await expect(failure).rejects.toThrow(/authenticate/);
+  });
+
   it("retries on 429 with backoff", async () => {
     mockFetch
       .mockResolvedValueOnce({

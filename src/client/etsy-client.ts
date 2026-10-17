@@ -1,4 +1,4 @@
-import { EtsyApiError, EtsyAuthError } from "../utils/errors.js";
+import { EtsyApiError, EtsyAuthError, describeErrorBody } from "../utils/errors.js";
 
 const BASE_URL = "https://openapi.etsy.com/v3/application";
 const MAX_RETRIES = 3;
@@ -108,7 +108,12 @@ export class EtsyClient {
             continue;
           }
           const errorBody = await response.json().catch(() => null);
-          throw new EtsyApiError(401, errorBody, "Authentication failed after token refresh");
+          const detail = describeErrorBody(errorBody);
+          throw new EtsyApiError(
+            401,
+            errorBody,
+            `Etsy rejected the login even after a token refresh${detail ? ` (${detail})` : ""}. Call the authenticate tool to sign in again.`
+          );
         }
 
         if (response.status === 429) {

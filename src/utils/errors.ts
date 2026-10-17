@@ -1,10 +1,24 @@
+const DETAIL_LIMIT = 300;
+
+/** Etsy's own reason for a failure, for use in error messages. Empty when the body says nothing. */
+export function describeErrorBody(errorBody: unknown): string {
+  if (errorBody === null || errorBody === undefined) return "";
+  if (typeof errorBody === "object" && "error" in errorBody) {
+    const reason = (errorBody as { error: unknown }).error;
+    return typeof reason === "string" ? reason : JSON.stringify(reason) ?? "";
+  }
+  return (JSON.stringify(errorBody) ?? "").slice(0, DETAIL_LIMIT);
+}
+
 export class EtsyApiError extends Error {
   constructor(
     public status: number,
     public errorBody: unknown,
     message?: string
   ) {
-    super(message ?? `Etsy API error (${status})`);
+    // The MCP SDK forwards only error.message to Claude, so Etsy's reason has to live in it.
+    const detail = describeErrorBody(errorBody);
+    super(message ?? `Etsy API error (${status})${detail ? `: ${detail}` : ""}`);
     this.name = "EtsyApiError";
   }
 }
