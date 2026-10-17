@@ -48,7 +48,7 @@ Clean: only calls `openapi.etsy.com`, `api.etsy.com`, `www.etsy.com`; no exec/ev
 
 **Shop ID default:** every tool that takes `shop_id` makes it optional. When omitted, the server calls `GET /users/me` once, caches `shop_id` for the process, and uses it. Errors clearly if the account has no shop.
 
-**Annotations:** every tool registers MCP `annotations` — `readOnlyHint: true` for reads; `readOnlyHint: false` plus `destructiveHint: true` for `delete_listing_image`, `update_listing`, `update_listing_inventory`, `update_receipt`; `destructiveHint: false` for additive writes (`create_draft_listing`, `create_shipment`, `upload_listing_image`, `upload_listing_video`). `openWorldHint: true` on all (they hit Etsy).
+**Annotations:** every tool registers MCP `annotations` — `readOnlyHint: true` for reads; `readOnlyHint: false` plus `destructiveHint: true` for `delete_listing_image`, `update_listing`, `update_listing_inventory`, `update_receipt`; `destructiveHint: false` for additive writes (`create_draft_listing`, `create_shipment`, `upload_listing_image`, `upload_listing_video`). `openWorldHint: true` on all (they hit Etsy). `authenticate` gets its own `SIGN_IN` annotation (`readOnlyHint: false, destructiveHint: false, openWorldHint: true`): it opens a browser and writes the local token file but changes nothing on Etsy, and it stays on the Claude Code allow list.
 
 Final 33 tools:
 
@@ -83,7 +83,7 @@ Final 33 tools:
 4. Register:
    - Claude Code: `claude mcp add etsy -s user -- node D:\PROJECTS\etsy-mcp\dist\index.js`
    - Claude Desktop: `claude_desktop_config.json` → `"etsy": { "command": "node", "args": ["D:\\PROJECTS\\etsy-mcp\\dist\\index.js"] }`
-5. Claude Code permissions: add the 25 read tools to the allow list by exact name (`mcp__etsy__<tool>` — every `get_*`, plus `search_listings`, `find_shops`, `authenticate`); leave the 8 write tools unlisted so each write prompts.
+5. Claude Code permissions: add the 24 read tools plus `authenticate` (25 names) to the allow list by exact name (`mcp__etsy__<tool>` — every `get_*`, plus `search_listings`, `find_shops`, `authenticate`); leave the 8 write tools unlisted so each write prompts.
 6. In Claude: "authenticate with Etsy" → browser consent → tokens saved to `~/.etsy-mcp/tokens.json`.
 
 ## Testing

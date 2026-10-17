@@ -36,7 +36,7 @@ export interface ServerConfig {
 export function createEtsyMcpServer(config: ServerConfig): McpServer {
   const server = new McpServer({
     name: "etsy-mcp",
-    version: "1.0.0",
+    version: "1.1.0-elektron",
   });
 
   const tokenStorePath =

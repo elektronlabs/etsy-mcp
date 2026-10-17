@@ -1,6 +1,6 @@
 {
   "name": "etsy-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0-elektron",
   "description": "MCP server providing full access to the Etsy Open API v3 for both buyer browsing and seller shop management",
   "main": "dist/index.js",
   "type": "module",
@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "smoke": "node scripts/smoke-stdio.mjs",
     "generate-types": "npx openapi-typescript@7 https://www.etsy.com/openapi/generated/oas/3.0.0.json -o src/client/types.d.ts"
   },
   "keywords": [
@@ -28,6 +29,9 @@
     "ai"
   ],
   "author": "Amit Serper",
+  "contributors": [
+    "Elektron Labs (https://elektronlabs.net)"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
