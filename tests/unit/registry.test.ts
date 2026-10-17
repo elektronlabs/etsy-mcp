@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEtsyMcpServer, ETSY_SCOPES } from "../../src/index.js";
-import { connectClient } from "../helpers/mcp.js";
+import { connectClient, textOf } from "../helpers/mcp.js";
 
 const READS = [
   "find_shops", "get_buyer_taxonomy", "get_ledger_entries", "get_listing",
@@ -87,6 +87,57 @@ describe("tool registry", () => {
     const client = await connectClient(makeServer());
     await client.callTool({ name: "get_shop", arguments: { shop_id: 5 } });
     expect(paths()).toEqual(["/v3/application/shops/5"]);
+  });
+
+  describe("input schemas match Etsy's OpenAPI spec", () => {
+    type Schema = { properties?: Record<string, { enum?: string[]; minimum?: number; maximum?: number; type?: string }>; required?: string[] };
+    async function schemaOf(name: string): Promise<Schema> {
+      const tool = (await listTools()).find((t) => t.name === name);
+      expect(tool, name).toBeDefined();
+      return tool!.inputSchema as Schema;
+    }
+
+    it("update_listing accepts only fields Etsy's updateListing takes", async () => {
+      const schema = await schemaOf("update_listing");
+      expect(schema.properties).not.toHaveProperty("price");
+      expect(schema.properties).not.toHaveProperty("quantity");
+      expect(schema.properties?.state?.enum).toEqual(["active", "inactive"]);
+    });
+
+    it("update_listing refuses price instead of silently sending an empty update", async () => {
+      const paths = stubEtsy(777);
+      const client = await connectClient(makeServer());
+      const result = await client.callTool({ name: "update_listing", arguments: { shop_id: 5, listing_id: 9, price: 10 } });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("price");
+      expect(paths()).toEqual([]);
+    });
+
+    it("update_listing says where price and quantity changes go", async () => {
+      const tool = (await listTools()).find((t) => t.name === "update_listing");
+      expect(tool?.description).toContain("update_listing_inventory");
+      expect(tool?.description).toContain("inactive");
+    });
+
+    it("get_payments requires receipt_id", async () => {
+      expect((await schemaOf("get_payments")).required).toContain("receipt_id");
+    });
+
+    it("get_ledger_entries requires min_created and max_created as integers", async () => {
+      const schema = await schemaOf("get_ledger_entries");
+      expect(schema.required).toEqual(expect.arrayContaining(["min_created", "max_created"]));
+      expect(schema.properties?.min_created?.type).toBe("integer");
+      expect(schema.properties?.max_created?.type).toBe("integer");
+    });
+
+    it("create_draft_listing offers Etsy's current when_made values", async () => {
+      const values = (await schemaOf("create_draft_listing")).properties?.when_made?.enum;
+      expect(values).toEqual([
+        "made_to_order", "2020_2026", "2010_2019", "2007_2009", "before_2007", "2000_2006",
+        "1990s", "1980s", "1970s", "1960s", "1950s", "1940s", "1930s", "1920s", "1910s", "1900s",
+        "1800s", "1700s", "before_1700",
+      ]);
+    });
   });
 
   describe("paging inputs", () => {

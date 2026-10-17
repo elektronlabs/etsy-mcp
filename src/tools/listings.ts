@@ -71,7 +71,7 @@ export function registerListingsTools(server: McpServer, client: EtsyClient, sho
         quantity: z.number().describe("Available quantity"),
         taxonomy_id: z.number().describe("Taxonomy/category ID"),
         who_made: z.enum(["i_did", "someone_else", "collective"]).describe("Who made the item"),
-        when_made: z.enum(["made_to_order", "2020_2024", "2010_2019", "2005_2009", "before_2005", "2000_2004", "1990s", "1980s", "1970s", "1960s", "1950s", "1940s", "1930s", "1920s", "1910s", "1900s", "1800s", "1700s", "before_1700"]).describe("When it was made"),
+        when_made: z.enum(["made_to_order", "2020_2026", "2010_2019", "2007_2009", "before_2007", "2000_2006", "1990s", "1980s", "1970s", "1960s", "1950s", "1940s", "1930s", "1920s", "1910s", "1900s", "1800s", "1700s", "before_1700"]).describe("When it was made"),
         is_supply: z.boolean().describe("Is this a craft supply?"),
         shipping_profile_id: z.number().optional().describe("Shipping profile ID"),
         tags: z.array(z.string()).optional().describe("Tags (max 13)"),
@@ -93,19 +93,18 @@ export function registerListingsTools(server: McpServer, client: EtsyClient, sho
   server.registerTool(
     "update_listing",
     {
-      description: "Update an existing listing. Set state to \"inactive\" to take it off sale.",
-      inputSchema: {
+      description: "Update an existing listing's title, description, tags, materials, category or state. Set state to \"inactive\" to take it off sale. Etsy does not accept price or quantity here: change those with update_listing_inventory.",
+      // Strict, so a stale habit like { price: 10 } is refused instead of silently dropped into an empty PATCH.
+      inputSchema: z.strictObject({
         shop_id: shopIdArg,
         listing_id: z.number().describe("The listing ID"),
         title: z.string().optional().describe("Listing title"),
         description: z.string().optional().describe("Listing description"),
-        price: z.number().optional().describe("Price"),
-        quantity: z.number().optional().describe("Quantity"),
         tags: z.array(z.string()).optional().describe("Tags"),
         materials: z.array(z.string()).optional().describe("Materials"),
-        state: z.enum(["active", "inactive", "draft"]).optional().describe("Listing state"),
+        state: z.enum(["active", "inactive"]).optional().describe("\"inactive\" takes the listing off sale; \"active\" puts it back on sale (a draft needs an image first)"),
         taxonomy_id: z.number().optional().describe("Taxonomy ID"),
-      },
+      }),
       annotations: WRITE_DESTRUCTIVE,
     },
     async (args) => {
